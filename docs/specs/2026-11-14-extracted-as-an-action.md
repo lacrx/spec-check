@@ -50,6 +50,11 @@ would have needed a copy, and N copies of a rule is the failure this tool exists
 - **S5** WHEN a consumer pins this action, it SHALL pin a commit sha rather than a tag, so a
   moved tag cannot change what runs in a gate.
 - **S6** The template every consumer copies SHALL itself pass `spec-check spec`.
+- **S7** WHEN a documentation file carries a `spec-check:rules` block, `docs --check` SHALL
+  fail IF that block differs from what this version of the tool emits, and the block SHALL
+  be derived from the constants the enforcement reads rather than written by hand.
+- **S8** WHEN a file named to `docs --check` carries no block, or a phrasing marked
+  `retired:` appears elsewhere in it, THEN the check SHALL fail rather than pass quietly.
 
 ## Blast radius
 
@@ -75,7 +80,9 @@ would have needed a copy, and N copies of a rule is the failure this tool exists
 | S4 | `TestTheToolItself::test_a_spec_outside_the_repository_needs_the_prefix_configured`, both directions. |
 | S5 | `manual:` every consumer workflow was written with a sha, and the README says why. Nothing enforces it mechanically, which is stated rather than implied. |
 | S6 | `.github/workflows/ci.yml` runs `spec_check.py spec examples/SPEC-TEMPLATE.md` on every push. |
-| The suite | `python3 -m pytest tests/ -q`: 68 passed. `python3 spec_check.py --selftest`: 24/24. CI runs both on 3.9 and 3.13, the 3.9 leg on `ubuntu-22.04` because `setup-python` has no 3.9 build for Ubuntu 26.04. `manual:` the selftest and the template check also run green on macOS's own `/usr/bin/python3`, 3.9.6, which is what a `commit-msg` hook there would use. |
+| S7 | `TestGeneratedDocs::test_a_block_goes_stale_when_the_rules_change` monkeypatches `REQUIRED_SLOTS` and asserts the block goes red, which is the inversion that matters; `test_the_block_names_every_slot_and_tier` and `test_the_block_carries_no_version_or_sha` cover what it must and must not contain. This repository's own README carries a block and its CI checks it. |
+| S8 | `TestGeneratedDocs::test_a_file_with_no_block_fails_rather_than_passing`, `test_an_unclosed_block_is_a_failure_not_a_silent_pass`, `test_retired_phrasing_coming_back_fails`, `test_a_retired_directive_alone_is_not_a_failure`. |
+| The suite | `python3 -m pytest tests/ -q`: 81 passed. `python3 spec_check.py --selftest`: 24/24. CI runs both on 3.9 and 3.13, the 3.9 leg on `ubuntu-22.04` because `setup-python` has no 3.9 build for Ubuntu 26.04. `manual:` the selftest and the template check also run green on macOS's own `/usr/bin/python3`, 3.9.6, which is what a `commit-msg` hook there would use. |
 
 ## Rejected
 
@@ -89,6 +96,17 @@ would have needed a copy, and N copies of a rule is the failure this tool exists
   wider than a single file needs. The whole tool is one stdlib module on purpose.
 - **A git submodule per consumer.** Checkout flags and update discipline in every repository,
   for the same result a pinned action gives with none of it.
+- **An LLM pass over the prose to find contradictions.** It is the only thing that catches
+  two hand-written paragraphs disagreeing in nuance, and a reviewer already does it well:
+  three for three on the change that prompted this. What it cannot be is a *gate*, because
+  it is probabilistic, so the mechanical half is generated blocks and retired phrasings and
+  the judgement half stays with the reviewer.
+- **Generating whole sections rather than a block.** The reasoning and the incidents are the
+  part worth reading and the part no tool can emit. Only the facts the code owns are
+  generated, which is why the marker delimits a block inside a hand-written section.
+- **Embedding the tool's sha in the generated block.** Every commit here would then make
+  every consumer's documentation stale, and a check that fires when nothing is wrong is one
+  everybody learns to re-run blindly. Asserted by `test_the_block_carries_no_version_or_sha`.
 - **A precedence order between the three sources**, which is what shipped first and was
   wrong. The checker runs against the pull request's own checkout, so the branch supplies
   the configuration: a branch could edit a sensitive path, add a `.spec-tier2` naming one

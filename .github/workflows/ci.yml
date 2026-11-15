@@ -32,3 +32,7 @@ jobs:
       # The template is documentation that has to stay valid, so it is checked as a spec
       # rather than trusted to still parse.
       - run: python spec_check.py spec examples/SPEC-TEMPLATE.md
+      # The README's rule section is generated from the constants the enforcement reads, so
+      # a rules change that forgets `docs --write` turns this repository's own CI red. If the
+      # tool cannot keep its own documentation current, the consumers have no reason to.
+      - run: python spec_check.py docs --check README.md

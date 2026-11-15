@@ -14,6 +14,7 @@ The invariant ids in the docstrings are the ones in `examples/SPEC-TEMPLATE.md`.
 """
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -470,3 +471,113 @@ class TestTheToolItself:
 
     def test_a_broken_spec_path_is_a_tool_error_not_a_verdict(self):
         assert sc.main(["spec", "/nonexistent/spec.md"]) == 2
+
+
+class TestGeneratedDocs:
+    """The rules a consumer's documentation restates are emitted, not retyped.
+
+    This class exists because of what the reviewer found on the pull request that introduced
+    the union rule: three sentences in two files were left standing beside their
+    replacements, each one asserting the precedence order the code no longer had. Every one
+    was in the confident present tense, and nothing anywhere went red. A reader caught all
+    three.
+
+    So the facts the code owns are generated into those files, and `docs --check` fails when
+    a block has drifted. `retired:` covers the other half: a phrasing that has been
+    superseded is written down once, and the file is refused if it comes back.
+    """
+
+    def doc(self, extra: str = "") -> str:
+        return f"# A consumer's documentation\n\nNarrative that stays hand written.\n\n{sc.rules_markdown()}\n\n{extra}"
+
+    def test_a_current_block_passes(self, tmp_path):
+        path = tmp_path / "CLAUDE.md"
+        path.write_text(self.doc())
+        fails, _ = sc.doc_failures(path)
+        assert fails == []
+
+    def test_an_edited_block_fails(self, tmp_path):
+        path = tmp_path / "CLAUDE.md"
+        path.write_text(self.doc().replace("the UNION of two sources", "whichever answers first"))
+        fails, _ = sc.doc_failures(path)
+        assert any("out of date" in f for f in fails), fails
+
+    def test_a_block_goes_stale_when_the_rules_change(self, tmp_path, monkeypatch):
+        """The inversion that matters: a change in the tool makes the documentation red.
+
+        Today's failure is the other way round, which is why it is silent: the code changes
+        and the prose keeps its tense.
+        """
+        path = tmp_path / "CLAUDE.md"
+        path.write_text(self.doc())
+        assert sc.doc_failures(path)[0] == []
+        monkeypatch.setitem(sc.REQUIRED_SLOTS, 1, ("Why", "Rule", "Verified", "Cost", "Spec"))
+        fails, _ = sc.doc_failures(path)
+        assert any("out of date" in f for f in fails), fails
+
+    def test_write_fixes_what_check_reports(self, tmp_path):
+        path = tmp_path / "CLAUDE.md"
+        path.write_text(self.doc().replace("| Tier | Slots required | Needs |", "| Tier | Needs |"))
+        assert sc.doc_failures(path)[0] != []
+        assert sc.main(["docs", str(path), "--write"]) == 0
+        assert sc.doc_failures(path)[0] == []
+
+    def test_a_file_with_no_block_fails_rather_than_passing(self, tmp_path):
+        path = tmp_path / "CLAUDE.md"
+        path.write_text("# No block here\n\nJust prose.\n")
+        fails, _ = sc.doc_failures(path)
+        assert any("no `<!-- spec-check:rules -->` block" in f for f in fails), fails
+
+    def test_an_unclosed_block_is_a_failure_not_a_silent_pass(self, tmp_path):
+        path = tmp_path / "CLAUDE.md"
+        path.write_text(f"# x\n\n{sc.BEGIN}\nhalf a block\n")
+        fails, _ = sc.doc_failures(path)
+        assert any("no closing" in f for f in fails), fails
+
+    def test_retired_phrasing_coming_back_fails(self, tmp_path):
+        path = tmp_path / "CLAUDE.md"
+        path.write_text(
+            self.doc(
+                '<!-- retired: "wins over both" -->\n\n'
+                "A `.spec-tier2` file is unioned with `paths:`, which wins over both.\n"
+            )
+        )
+        fails, _ = sc.doc_failures(path)
+        assert any("retired phrasing is back" in f for f in fails), fails
+
+    def test_a_retired_directive_alone_is_not_a_failure(self, tmp_path):
+        path = tmp_path / "CLAUDE.md"
+        path.write_text(self.doc('<!-- retired: "wins over both" -->\n\nThe union is the rule.\n'))
+        fails, _ = sc.doc_failures(path)
+        assert fails == [], fails
+
+    def test_claim_tags_are_reported_for_the_consumer_to_assert(self, tmp_path):
+        path = tmp_path / "CLAUDE.md"
+        path.write_text(
+            self.doc(
+                "<!-- claim: canonical-copy-is-the-action -->\n\nThe checker is a pinned action.\n"
+                "<!-- claim: no-local-copy -->\n\nThere is no copy in this repository.\n"
+            )
+        )
+        fails, tags = sc.doc_failures(path)
+        assert fails == []
+        assert tags == ["canonical-copy-is-the-action", "no-local-copy"]
+
+    def test_the_block_names_every_slot_and_tier(self):
+        """A generated block that quietly stopped mentioning a rule would be worse than a
+        hand-written one, because nobody re-reads generated text."""
+        block = sc.rules_markdown()
+        for slot in sc.SLOTS:
+            assert f"`{slot}:`" in block
+        for level in (0, 1, 2):
+            assert f"| {level} |" in block
+        assert str(sc.MIN_SLOT_WORDS) in block
+        assert str(sc.MAX_SUBJECT) in block
+        for glob in sc.DEFAULT_TIER2:
+            assert f"`{glob}`" in block
+
+    def test_the_block_carries_no_version_or_sha(self):
+        """A block embedding the tool's own sha would go stale on every commit here, and a
+        check that fires when nothing is wrong is one everybody learns to re-run blindly."""
+        block = sc.rules_markdown()
+        assert not re.search(r"\b[0-9a-f]{7,40}\b", block)

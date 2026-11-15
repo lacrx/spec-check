@@ -28,6 +28,10 @@ inputs:
     description: Comma-separated path prefixes whose spec files live outside this repository and are accepted unvalidated.
     required: false
     default: ""
+  docs:
+    description: Space-separated documentation files whose generated rule blocks must be current. Each must contain a `<!-- spec-check:rules -->` block.
+    required: false
+    default: ""
   check-commits:
     description: Also report (never fail) on each commit message on the branch.
     required: false
@@ -79,6 +83,35 @@ runs:
           echo "::error::the pull request body is missing part of the record"
           exit "$status"
         fi
+
+    - name: Is the documentation still describing this tool
+      # Runs whatever the consumer names, and fails the gate when a block has drifted. A
+      # repository whose CLAUDE.md restates the tier model gets that restatement verified
+      # rather than trusted, which is the half of documentation rot a reviewer should not
+      # have to catch by reading.
+      if: inputs.docs != ''
+      shell: bash
+      env:
+        DOCS: ${{ inputs.docs }}
+        TOOL: ${{ github.action_path }}/spec_check.py
+      run: |
+        set -euo pipefail
+        # Unquoted on purpose: this is a space-separated list of paths.
+        # shellcheck disable=SC2086
+        out=$(python3 "$TOOL" docs --check $DOCS 2>&1) || {
+          {
+            echo
+            echo "**The generated documentation block is out of date.**"
+            echo
+            echo '```'
+            echo "$out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$out"
+          echo "::error::documentation restates a rule this tool no longer applies"
+          exit 1
+        }
+        echo "$out"
 
     - name: What the commits say
       # Warn-only, and after the verdict. Mid-branch commits are where a thought is still
