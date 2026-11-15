@@ -672,6 +672,39 @@ CLAIM_RE = re.compile(r"<!--\s*claim:\s*([a-z0-9][a-z0-9-]*)\s*-->")
 RETIRED_RE = re.compile(r'<!--\s*retired:\s*"(.+?)"\s*-->')
 
 
+# The shortest line of the generated block worth treating as a fingerprint. Below this,
+# a line is common English ("| Tier | Holds |") and would fire on anything.
+FRAGMENT_FLOOR = 40
+
+
+def block_fragments() -> list[str]:
+    """The distinctive lines of the generated block, flattened, for finding copies of it.
+
+    A restatement of a rule is usually a COPY: somebody wanted the table nearer the prose, so
+    they pasted it, and the pasted one rots while the generated one does not. Short lines and
+    the marker comments are excluded, because a fingerprint has to be long enough to mean
+    something.
+    """
+    out: list[str] = []
+    # **The whole comment, not just lines that open one.** The block's own instruction
+    # comment wraps, and its second line does not start with `<!--`, so it was being treated
+    # as a content fingerprint: any document quoting `docs --write <this file>` in prose
+    # would have been reported as holding a copy of the block. A comment is never content.
+    in_comment = False
+    for line in rules_markdown().splitlines():
+        stripped = line.strip()
+        if in_comment:
+            in_comment = "-->" not in stripped
+            continue
+        if stripped.startswith("<!--"):
+            in_comment = "-->" not in stripped
+            continue
+        if not stripped or len(stripped) < FRAGMENT_FLOOR:
+            continue
+        out.append(flatten(stripped))
+    return out
+
+
 def flatten(value: str) -> str:
     """One space between words, case folded: how a human reads a phrase, not how it is wrapped."""
     return re.sub(r"\s+", " ", value).strip().casefold()
@@ -812,6 +845,28 @@ def doc_failures(path: Path) -> tuple[list[str], list[str]]:
     # about. Found by the reviewer, on the pull request that introduced the directive, in the
     # file that introduced it.
     without_directives = flatten(RETIRED_RE.sub("", text))
+    # A copy of the generated block's own lines, OUTSIDE the markers. The block cannot rot;
+    # a copy of it can, and the copy is what a reader finds first if it sits nearer the
+    # prose. This catches the paste, not a paraphrase: a sentence asserting the same rule in
+    # different words is still a reviewer's job, and spec-review question 6 asks for it.
+    outside = text
+    for begin in (BEGIN,):
+        while begin in outside:
+            start = outside.find(begin)
+            stop = outside.find(END, start)
+            if stop == -1:
+                break
+            outside = outside[:start] + outside[stop + len(END) :]
+    flat_outside = flatten(outside)
+    for fragment in block_fragments():
+        if fragment in flat_outside:
+            fails.append(
+                f"a line of the generated block is also outside it: {fragment[:60]!r}... "
+                "Delete the copy. The block is the one that cannot rot, and a copy beside it "
+                "is the one a reader finds first"
+            )
+            break
+
     for phrase in RETIRED_RE.findall(text):
         if flatten(phrase) in without_directives:
             fails.append(

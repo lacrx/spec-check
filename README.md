@@ -157,8 +157,8 @@ A `commit-msg` hook wants `--warn`: it reports and exits 0. Mid-branch commits a
 thought is still moving, and a hook that hard-fails buys nothing except the `--no-verify`
 habit. Fail at the pull request instead.
 
-Exit codes: `0` pass, `1` fail with the missing slot named, `2` the tool could not run. That
-third one matters: a tool error must never read as a verdict.
+The exit codes are in the generated block above. The third one is the one worth knowing: a
+tool error is `2`, never `1`, because a tool error must never read as a verdict.
 
 ## Documentation that cannot rot
 

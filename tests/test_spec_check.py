@@ -431,6 +431,33 @@ class TestSpecFile:
         assert any("no numbered" in f for f in sc.spec_failures(path))
 
 
+class TestTheGeneratorsConstantsStayInStep:
+    """The three constants `rules_markdown` reads must describe the same tiers and slots.
+
+    `SLOT_MEANING` is the one hand-written thing left in the generated block: the enforcement
+    does not read it, so a slot added to `SLOTS` without a description would print `None` or
+    raise, and a slot removed would leave a stale line. Same for `NEEDS`, which is indexed by
+    tier level. Set equality, not a spot check, because a subset check is what let the UI
+    catalogue lag and what let a directive test cover two of three.
+    """
+
+    def test_every_slot_has_a_meaning_and_no_extras(self):
+        assert set(sc.SLOTS) == set(sc.SLOT_MEANING)
+
+    def test_every_tier_has_required_slots_and_a_needs_line(self):
+        assert set(sc.REQUIRED_SLOTS) == {0, 1, 2}
+        assert len(sc.NEEDS) == 3
+
+    def test_required_slots_only_names_real_slots(self):
+        for level, slots in sc.REQUIRED_SLOTS.items():
+            assert set(slots) <= set(sc.SLOTS), level
+
+    def test_every_tier_requires_the_spec_trailer(self):
+        """The one slot no tier can do without: it is what says whether a spec exists."""
+        for level, slots in sc.REQUIRED_SLOTS.items():
+            assert "Spec" in slots, level
+
+
 class TestTheToolItself:
     def test_a_missing_spec_reference_fails_rather_than_crashing(self):
         body = GOOD.replace("Spec: in-message", "Spec: docs/specs/not-a-file.md")
@@ -649,6 +676,61 @@ class TestGeneratedDocs:
         path = tmp_path / "CLAUDE.md"
         path.write_text(self.doc())
         assert sc.main(["docs", str(path), "--check", "--write"]) == 2
+
+    def test_the_blocks_own_comment_is_not_a_fingerprint(self, tmp_path):
+        """A comment is never content, and the block's instruction comment wraps.
+
+        Its second line does not open with `<!--`, so it was a fingerprint: any document
+        quoting `docs --write <this file>` in prose would have been reported as holding a
+        copy of the block.
+        """
+        assert not any("do not edit between these markers" in f for f in sc.block_fragments())
+        path = tmp_path / "CLAUDE.md"
+        path.write_text(
+            self.doc("To refresh it, run `spec-check docs --write <this file>` after changing the tool.\n")
+        )
+        fails, _ = sc.doc_failures(path)
+        assert fails == [], fails
+
+    def test_a_copy_of_the_block_outside_it_fails(self, tmp_path):
+        """A restatement is usually a paste, and the paste is what rots.
+
+        Found two live instances on its first run: this repository's README stated the exit
+        codes by hand as well as in the block, and `shared-rules.md` restated the sentence
+        about the branch supplying the configuration. Both were written by the same hand that
+        added the block, days apart.
+        """
+        path = tmp_path / "CLAUDE.md"
+        pasted = [ln for ln in sc.rules_markdown().splitlines() if len(ln.strip()) >= sc.FRAGMENT_FLOOR]
+        path.write_text(self.doc("Some prose, and then a copy:\n\n" + pasted[-1] + "\n"))
+        fails, _ = sc.doc_failures(path)
+        assert any("also outside it" in f for f in fails), fails
+
+    def test_a_copy_reflowed_is_still_a_copy(self, tmp_path):
+        path = tmp_path / "CLAUDE.md"
+        # Chosen from the fingerprints themselves rather than from the raw block. Picking a
+        # raw line selected the block's own instruction COMMENT, which is correctly not a
+        # fingerprint, so the test was asserting on text the check deliberately ignores.
+        line = next(f for f in sc.block_fragments() if len(f) >= 60 and "|" not in f)
+        words = line.split()
+        reflowed = " ".join(words[: len(words) // 2]) + "\n" + " ".join(words[len(words) // 2 :])
+        path.write_text(self.doc("Narrative.\n\n" + reflowed + "\n"))
+        fails, _ = sc.doc_failures(path)
+        assert any("also outside it" in f for f in fails), fails
+
+    def test_ordinary_prose_about_the_rules_is_not_a_copy(self, tmp_path):
+        """The check is for pastes, not for writing about the rules. A paraphrase passes, and
+        catching paraphrases is spec-review question 6, not this."""
+        path = tmp_path / "CLAUDE.md"
+        path.write_text(
+            self.doc(
+                "What tier 2 means here is the reviewer's own list, which this repository\n"
+                "keeps in its review workflow. A docs-only change needs a reason and nothing\n"
+                "else, and anything that can spend money needs a spec file.\n"
+            )
+        )
+        fails, _ = sc.doc_failures(path)
+        assert fails == [], fails
 
     def test_the_block_carries_no_version_or_sha(self):
         """A block embedding the tool's own sha would go stale on every commit here, and a
