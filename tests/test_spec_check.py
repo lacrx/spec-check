@@ -311,7 +311,15 @@ class TestTier:
         assert source == "built-in defaults"
         assert sc.tier_for([path], globs, source).level == 2
 
-    def test_a_repositorys_own_file_beats_the_workflow_and_the_defaults(self, tmp_path):
+    def test_a_repositorys_own_file_adds_to_the_workflow_and_never_replaces_it(self, tmp_path):
+        """The branch supplies the configuration, so a repository file must only ADD.
+
+        Found by a reviewer on the pull request that introduced the file: under a precedence
+        order, a branch could edit a sensitive path and add a `.spec-tier2` naming one
+        unrelated glob. Its own file would win, the change would grade tier 1, no spec would
+        be required, and a clean review would merge it. The thing being gated chose the
+        gate's settings in the same change, and nothing went red.
+        """
         wf = tmp_path / ".github" / "workflows" / "code-review.yml"
         wf.parent.mkdir(parents=True)
         wf.write_text(WORKFLOW_FIXTURE)
@@ -319,13 +327,34 @@ class TestTier:
             "# what this repository calls its boundary\nscripts/pay*.py\n\nservices/billing/**\n"
         )
         globs, source = sc.tier2_globs(tmp_path)
-        assert source == ".spec-tier2"
-        assert globs == ["scripts/pay*.py", "services/billing/**"]
+        assert source == ".spec-tier2 + .github/workflows/code-review.yml paths:"
+        assert globs == ["scripts/pay*.py", "services/billing/**", *self.globs]
         assert sc.tier_for(["scripts/pay_out.py"], globs, source).level == 2
-        # The workflow's list no longer applies, which is the point of a precedence order.
-        assert sc.tier_for(["app/config.py"], globs, source).level == 1
+        # The workflow's list still applies in full. This is the assertion that would have
+        # caught the hole.
+        assert sc.tier_for(["app/config.py"], globs, source).level == 2
+        assert sc.tier_for(["app/auth/session.py"], globs, source).level == 2
 
-    def test_the_workflow_beats_the_defaults(self, tmp_path):
+    def test_a_branch_cannot_demote_itself_by_adding_a_file(self, tmp_path):
+        wf = tmp_path / ".github" / "workflows" / "code-review.yml"
+        wf.parent.mkdir(parents=True)
+        wf.write_text(WORKFLOW_FIXTURE)
+        before, src_before = sc.tier2_globs(tmp_path)
+        assert sc.tier_for(["app/config.py"], before, src_before).level == 2
+        (tmp_path / ".spec-tier2").write_text("docs/nothing-important/**\n")
+        after, src_after = sc.tier2_globs(tmp_path)
+        assert set(before) <= set(after), "a repository file narrowed the list"
+        assert sc.tier_for(["app/config.py"], after, src_after).level == 2
+
+    def test_duplicates_across_the_two_sources_collapse(self, tmp_path):
+        wf = tmp_path / ".github" / "workflows" / "code-review.yml"
+        wf.parent.mkdir(parents=True)
+        wf.write_text(WORKFLOW_FIXTURE)
+        (tmp_path / ".spec-tier2").write_text("app/config.py\nextra/**\n")
+        globs, _ = sc.tier2_globs(tmp_path)
+        assert globs.count("app/config.py") == 1
+
+    def test_the_workflow_replaces_the_defaults(self, tmp_path):
         wf = tmp_path / ".github" / "workflows" / "code-review.yml"
         wf.parent.mkdir(parents=True)
         wf.write_text(WORKFLOW_FIXTURE)

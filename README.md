@@ -52,17 +52,26 @@ what changed.
 | 1 | ordinary code | `Why:`, `Rule:`, `Verified:`; the message is the spec |
 | 2 | the boundary class | a spec file, named in `Spec:` |
 
-The tier-2 list is **read, not restated**, in this order:
+The tier-2 list is **read, not restated**. It is the **union** of:
 
 1. `.spec-tier2` in the repository root: one glob per line, `#` for comments.
 2. The `paths:` block of a review workflow (`--workflow`, default
    `.github/workflows/code-review.yml`). A repository that already filters an expensive
    review to its boundary class has written that list once, so widening the review widens
    what needs a spec, in one edit.
-3. The built-in defaults: credentials, deployment, the CI configuration itself, and where
-   authentication tends to live.
 
-`spec-check tier` prints which source it used, because the tier is the part people argue with.
+The built-in defaults (credentials, deployment, the CI configuration itself, and where
+authentication tends to live) apply only when a repository names neither.
+
+**A union, not a precedence order, and that is a security property.** This runs against the
+pull request's own checkout, so the branch supplies the configuration. Under precedence a
+branch could edit a sensitive file, add a `.spec-tier2` naming one unrelated glob, and have
+its own change graded tier 1: the thing being gated choosing the gate's settings, in the same
+change, with nothing going red. Under a union, a repository's own file can only ever make
+**more** paths tier 2.
+
+`spec-check tier` prints which sources it used, because the tier is the part people argue
+with.
 
 ## The spec file
 

@@ -31,17 +31,23 @@ THE TIER LIST IS NOT WRITTEN DOWN TWICE
 =======================================
 
 A change is tier 0, 1 or 2 by what it touches, and the tier-2 list is **read** rather than
-restated. In order of precedence:
+restated. It is the UNION of:
 
 1. `.spec-tier2` in the repository root, one glob per line, `#` for comments.
 2. The `paths:` block of a review workflow (`--workflow`, default
    `.github/workflows/code-review.yml`). A repository that already filters an expensive
    review to its boundary class has written the list once; this reads that copy, so widening
    the review widens what needs a spec in one edit.
-3. `DEFAULT_TIER2` below, for a repository with neither.
 
-A fact kept in two places is a fact that can disagree with itself. `tier` prints which source
-it used, because the tier is the part people argue with.
+`DEFAULT_TIER2` below applies only when a repository names neither.
+
+**A union and not a precedence order, deliberately.** This runs against the pull request's
+own checkout, so the branch supplies the configuration; under precedence a branch could add
+a `.spec-tier2` naming one unrelated glob and demote its own sensitive change to tier 1.
+Under a union, a repository's own file can only ever make MORE paths tier 2.
+
+A fact kept in two places is a fact that can disagree with itself. `tier` prints which
+sources it used, because the tier is the part people argue with.
 
 USAGE
 =====
@@ -201,18 +207,38 @@ def tier2_from_file(root: Path) -> list[str]:
 
 
 def tier2_globs(root: Path, workflow: str = WORKFLOW) -> tuple[list[str], str]:
-    """The tier-2 globs and WHERE THEY CAME FROM, in precedence order.
+    """The tier-2 globs and WHERE THEY CAME FROM. **A UNION, never a precedence order.**
 
-    The source is returned rather than inferred, because "why is this tier 2" is the question
-    anybody argues with, and three possible origins with no label is how a gate becomes
-    folklore.
+    The first version of this took the first source that answered: `.spec-tier2` if present,
+    else a review workflow's `paths:`, else the built-in defaults. A reviewer found what that
+    allows, and it is the worst thing a gate can do.
+
+    This runs against the pull request's own checkout, so the BRANCH supplies the
+    configuration. Under precedence, a branch could edit a sensitive file and add a
+    `.spec-tier2` naming one unrelated glob: its own file would win, the change would be
+    graded tier 1, no spec file would be required, and a clean review would merge it. The
+    thing being gated got to choose the gate's settings, in the same change, with nothing
+    going red.
+
+    A union cannot do that. Adding a file, or adding a line to one, can only ever make MORE
+    paths tier 2. The only way to narrow the list is to delete entries that are already
+    there, which is a visible edit to a tracked file that the list itself can cover.
+
+    The built-in defaults apply only when a repository names nothing of its own, because
+    those are a floor for repositories with no opinion rather than an addition to one that
+    has expressed theirs.
     """
     named = tier2_from_file(root)
+    listed = boundary_globs(root, workflow)
+    if named and listed:
+        # Deduplicated, order preserved: the file first, since that is the one somebody in
+        # this repository wrote on purpose.
+        merged = list(dict.fromkeys([*named, *listed]))
+        return merged, f"{TIER2_FILE} + {workflow} paths:"
     if named:
         return named, TIER2_FILE
-    globs = boundary_globs(root, workflow)
-    if globs:
-        return globs, f"{workflow} paths:"
+    if listed:
+        return listed, f"{workflow} paths:"
     return list(DEFAULT_TIER2), "built-in defaults"
 
 

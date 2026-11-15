@@ -41,8 +41,10 @@ would have needed a copy, and N copies of a rule is the failure this tool exists
   `spec_check.py` and no vendored copy.
 - **S2** WHERE a repository states no tier-2 list, the built-in defaults SHALL apply, and
   `tier` SHALL name which of the three sources it used.
-- **S3** WHEN a repository ships `.spec-tier2`, that file SHALL win over a review workflow's
-  `paths:` block, which SHALL win over the built-in defaults.
+- **S3** WHEN a repository ships `.spec-tier2` and a review workflow both, the tier-2 list
+  SHALL be their union, and a file in the checkout SHALL NOT be able to remove a glob that
+  the review workflow names. The built-in defaults SHALL apply only where a repository names
+  neither.
 - **S4** WHEN a spec path lies outside the repository, it SHALL be accepted unvalidated only
   under a prefix the deployment configured, and SHALL otherwise fail as a missing file.
 - **S5** WHEN a consumer pins this action, it SHALL pin a commit sha rather than a tag, so a
@@ -69,7 +71,7 @@ would have needed a copy, and N copies of a rule is the failure this tool exists
 |---|---|
 | S1 | `manual:` the consumer workflows `uses: lacrx/spec-check@<sha>` and carry no copy of the tool; the first consumer's gate ran green against this repository's file. |
 | S2 | `TestTier::test_the_built_in_list_covers_a_repository_with_nothing_of_its_own` and `test_the_source_is_named_in_the_explanation`, plus three `--selftest` cases. |
-| S3 | `TestTier::test_a_repositorys_own_file_beats_the_workflow_and_the_defaults` and `test_the_workflow_beats_the_defaults`. |
+| S3 | `TestTier::test_a_repositorys_own_file_adds_to_the_workflow_and_never_replaces_it`, `test_a_branch_cannot_demote_itself_by_adding_a_file` (asserts the union is a superset), `test_duplicates_across_the_two_sources_collapse`, `test_the_workflow_replaces_the_defaults`. |
 | S4 | `TestTheToolItself::test_a_spec_outside_the_repository_needs_the_prefix_configured`, both directions. |
 | S5 | `manual:` every consumer workflow was written with a sha, and the README says why. Nothing enforces it mechanically, which is stated rather than implied. |
 | S6 | `.github/workflows/ci.yml` runs `spec_check.py spec examples/SPEC-TEMPLATE.md` on every push. |
@@ -87,6 +89,13 @@ would have needed a copy, and N copies of a rule is the failure this tool exists
   wider than a single file needs. The whole tool is one stdlib module on purpose.
 - **A git submodule per consumer.** Checkout flags and update discipline in every repository,
   for the same result a pinned action gives with none of it.
+- **A precedence order between the three sources**, which is what shipped first and was
+  wrong. The checker runs against the pull request's own checkout, so the branch supplies
+  the configuration: a branch could edit a sensitive path, add a `.spec-tier2` naming one
+  unrelated glob, and grade itself tier 1 with no spec required. Found by the reviewer on
+  the first pull request that consumed this repository as an action. A union has the
+  property that matters, that a file in the branch can only ever widen the list, and keeps
+  the capability that made the file worth having.
 - **Keeping the household's incident narrative in the comments.** The reasoning is what makes
   the rules stick, so it stays; the specific files, pull request numbers and people do not
   belong in a public repository and are no loss, because what generalises is the *shape* of
