@@ -139,6 +139,8 @@ class TestMessage:
         "subject",
         [
             "Merge pull request #34 from acme/feat/tappable-map",
+            # GitHub's synthetic merge commit, which is HEAD in a `pull_request` checkout.
+            "Merge d1d0580233205446bfe02977bec1982954238189 into e1016f1289f128caabee31d2f4cd6ffa7f04e6de",
             "Merge branch 'main' into feat/x",
             "fixup! feat(ui): the map is the link",
             "WIP: still thinking",
@@ -154,6 +156,8 @@ class TestMessage:
             "Wipe stale thumbnails on startup",
             "wiping the idempotency ledger on boot",
             "Document why merge branch fails here",
+            # Close to the synthetic form and still authored prose: no second sha.
+            "Merge deadbeef1234567 handling into the resolver",
             "chore: revert to the documented Apple URL form",
         ],
     )

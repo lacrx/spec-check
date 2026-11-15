@@ -146,7 +146,13 @@ SPEC_STATUSES = ("proposed", "accepted", "shipped", "abandoned")
 # Every one of these is generated at the START of a subject, so anchoring costs nothing.
 SKIP_RE = re.compile(
     r"^(?:fixup!|squash!|amend!|wip\b|merge pull request\b|merge branch\b"
-    r"|merge remote-tracking\b|revert \")",
+    r"|merge remote-tracking\b|revert \""
+    # **GitHub's own synthetic merge commit**, `Merge <sha> into <sha>`, which is what a
+    # `pull_request` checkout puts at HEAD. It was not matched, so the commit-message loop
+    # warned about a missing `Why:` on every pull request in every repository: noise, in a
+    # report whose only value is that somebody still reads it. Two shas and nothing else, so
+    # it cannot collide with a hand-written subject.
+    r"|merge [0-9a-f]{7,40} into [0-9a-f]{7,40}$)",
     re.IGNORECASE,
 )
 
