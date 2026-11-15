@@ -1,0 +1,105 @@
+# The spec gate as one step, so a consuming repository's workflow is a dozen lines and the
+# gate's logic lives in one place rather than in N copies of a workflow file.
+#
+# The consumer must check out with `fetch-depth: 0`. The tier is decided by what the merge
+# would bring in, which needs the base branch in the clone; at depth 1 there is nothing to
+# diff against and every change looks like it touched nothing.
+name: spec-check
+description: Check that a pull request body and its commits carry the record a reviewer needs.
+
+inputs:
+  body-file:
+    description: File holding the pull request body. Write it from the event through the environment, never by interpolating it into a script.
+    required: false
+    default: ""
+  title:
+    description: Pull request title. A body has no subject line of its own, so this is glued on to make one message.
+    required: false
+    default: ""
+  base:
+    description: Base ref to diff against, without the remote (for example `main`).
+    required: false
+    default: main
+  workflow:
+    description: The review workflow whose `paths:` block is this repository's tier-2 list.
+    required: false
+    default: .github/workflows/code-review.yml
+  external-prefix:
+    description: Comma-separated path prefixes whose spec files live outside this repository and are accepted unvalidated.
+    required: false
+    default: ""
+  check-commits:
+    description: Also report (never fail) on each commit message on the branch.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Check the record
+      shell: bash
+      env:
+        BODY_FILE: ${{ inputs.body-file }}
+        TITLE: ${{ inputs.title }}
+        BASE: ${{ inputs.base }}
+        SPEC_WORKFLOW: ${{ inputs.workflow }}
+        SPEC_EXTERNAL_PREFIX: ${{ inputs.external-prefix }}
+        TOOL: ${{ github.action_path }}/spec_check.py
+      run: |
+        set -euo pipefail
+
+        echo "### Spec gate" >> "$GITHUB_STEP_SUMMARY"
+        echo >> "$GITHUB_STEP_SUMMARY"
+
+        # The tier, and the path that decided it, in the summary whether the gate passes or
+        # not: the tier is the part anybody argues with, and it is read out of this
+        # repository's own list rather than restated here.
+        tier=$(python3 "$TOOL" tier --base "origin/$BASE" --workflow "$SPEC_WORKFLOW" 2>&1 || true)
+        {
+          echo '```'
+          echo "$tier"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        status=0
+        out=$(python3 "$TOOL" pr \
+                --body-file "$BODY_FILE" \
+                --title "$TITLE" \
+                --base "origin/$BASE" \
+                --workflow "$SPEC_WORKFLOW" 2>&1) || status=$?
+
+        {
+          echo '```'
+          echo "$out"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        echo "$out"
+
+        if [ "$status" != "0" ]; then
+          echo "::error::the pull request body is missing part of the record"
+          exit "$status"
+        fi
+
+    - name: What the commits say
+      # Warn-only, and after the verdict. Mid-branch commits are where a thought is still
+      # moving; the body is the record that survives review. Worth reading, not worth a gate.
+      if: always() && inputs.check-commits == 'true'
+      shell: bash
+      env:
+        BASE: ${{ inputs.base }}
+        SPEC_WORKFLOW: ${{ inputs.workflow }}
+        SPEC_EXTERNAL_PREFIX: ${{ inputs.external-prefix }}
+        TOOL: ${{ github.action_path }}/spec_check.py
+      run: |
+        set -uo pipefail
+        echo "<details><summary>commit messages</summary>" >> "$GITHUB_STEP_SUMMARY"
+        echo >> "$GITHUB_STEP_SUMMARY"
+        echo '```' >> "$GITHUB_STEP_SUMMARY"
+        for sha in $(git rev-list "origin/$BASE..HEAD"); do
+          git log -1 --format=%B "$sha" > "$RUNNER_TEMP/msg.txt"
+          echo "--- ${sha:0:8} $(git log -1 --format=%s "$sha")"
+          python3 "$TOOL" msg "$RUNNER_TEMP/msg.txt" --warn \
+            --base "origin/$BASE" --workflow "$SPEC_WORKFLOW" 2>&1 || true
+        done | tee -a "$GITHUB_STEP_SUMMARY"
+        echo '```' >> "$GITHUB_STEP_SUMMARY"
+        echo "</details>" >> "$GITHUB_STEP_SUMMARY"

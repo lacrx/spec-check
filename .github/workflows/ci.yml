@@ -1,0 +1,27 @@
+# The tool checks itself: the suite, the selftest, and the template every consumer copies.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # The floor and the current release. The floor is real: this is vendored into
+        # repositories and run by a git hook on whatever python the machine has.
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install pytest
+      - run: python -m pytest tests/ -q
+      - run: python spec_check.py --selftest
+      # The template is documentation that has to stay valid, so it is checked as a spec
+      # rather than trusted to still parse.
+      - run: python spec_check.py spec examples/SPEC-TEMPLATE.md
