@@ -672,6 +672,11 @@ CLAIM_RE = re.compile(r"<!--\s*claim:\s*([a-z0-9][a-z0-9-]*)\s*-->")
 RETIRED_RE = re.compile(r'<!--\s*retired:\s*"(.+?)"\s*-->')
 
 
+def flatten(value: str) -> str:
+    """One space between words, case folded: how a human reads a phrase, not how it is wrapped."""
+    return re.sub(r"\s+", " ", value).strip().casefold()
+
+
 def rules_markdown() -> str:
     """The rules this file ENFORCES, as markdown, generated from the constants above.
 
@@ -794,10 +799,16 @@ def doc_failures(path: Path) -> tuple[list[str], list[str]]:
             f"{path}` and read what changed"
         )
 
+    # **Normalised on both sides, which the first version was not.** It compared raw text,
+    # case-sensitively, and these files are hard-wrapped at about 92 columns: a retired
+    # sentence of several words comes back split across a line break, or reflowed, or with
+    # the capitalisation of its new position. That is the MOST likely way it returns, and the
+    # check said OK while the phrase was present in the file in every sense a reader cares
+    # about. Found by the reviewer, on the pull request that introduced the directive, in the
+    # file that introduced it.
+    without_directives = flatten(RETIRED_RE.sub("", text))
     for phrase in RETIRED_RE.findall(text):
-        # The directive line itself holds the phrase, so it is excluded from the search.
-        without_directives = RETIRED_RE.sub("", text)
-        if phrase in without_directives:
+        if flatten(phrase) in without_directives:
             fails.append(
                 f'retired phrasing is back: "{phrase}". It was marked retired in this file, '
                 "so either the claim is true again (remove the directive and say why) or a "

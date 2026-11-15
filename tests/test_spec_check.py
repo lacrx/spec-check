@@ -549,6 +549,47 @@ class TestGeneratedDocs:
         fails, _ = sc.doc_failures(path)
         assert any("retired phrasing is back" in f for f in fails), fails
 
+    @pytest.mark.parametrize(
+        "comeback",
+        [
+            # Reflowed across a line break, which is how a hard-wrapped file reproduces a
+            # sentence, and the case the raw substring test missed on the very pull request
+            # that added the directive.
+            "The canonical copy is here, not\nin the vault, which was true for a day.",
+            # Capitalised for its new position.
+            "the canonical copy is here, not in the vault",
+            # Extra spacing from a reflow.
+            "The  canonical copy is here,  not in the vault",
+            # Inside a list item, indented.
+            "  - The canonical copy is here, not in the vault\n",
+        ],
+    )
+    def test_retired_phrasing_is_caught_however_it_is_wrapped(self, tmp_path, comeback):
+        path = tmp_path / "CLAUDE.md"
+        path.write_text(
+            self.doc(
+                '<!-- retired: "The canonical copy is here, not in the vault" -->\n\n'
+                + comeback
+                + "\n"
+            )
+        )
+        fails, _ = sc.doc_failures(path)
+        assert any("retired phrasing is back" in f for f in fails), fails
+
+    def test_a_paraphrase_of_a_retired_phrase_is_allowed(self, tmp_path):
+        """The record of what was retired has to stay writable, or the directive bans the
+        history as well as the claim. A paraphrase is how a file keeps both."""
+        path = tmp_path / "CLAUDE.md"
+        path.write_text(
+            self.doc(
+                '<!-- retired: "The canonical copy is here, not in the vault" -->\n\n'
+                "It used to say the canonical copy lived in this repository, which stopped\n"
+                "being true the day the tool moved.\n"
+            )
+        )
+        fails, _ = sc.doc_failures(path)
+        assert fails == [], fails
+
     def test_a_retired_directive_alone_is_not_a_failure(self, tmp_path):
         path = tmp_path / "CLAUDE.md"
         path.write_text(self.doc('<!-- retired: "wins over both" -->\n\nThe union is the rule.\n'))
