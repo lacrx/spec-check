@@ -51,6 +51,10 @@ and names the source of the list it used).
 | 1 | `Why:`, `Rule:`, `Verified:`, `Spec:` | Why/Rule/Verified in the message, which is the spec |
 | 2 | `Why:`, `Rule:`, `Verified:`, `Spec:` | a spec file, named in a `Spec:` trailer |
 
+**Tier 0** is a change touching only these, the class whose mistakes announce themselves the
+next time somebody runs the thing: `app/prompts/*`, `docs/*`, `*.md`, `LICENSE`, `.gitignore.example`. **Tier 2** is anything matching the list below.
+**Tier 1** is everything else.
+
 **Slots.** Content is judged by presence of facts, never length or wording: a slot must carry
 at least 3 words and must not repeat the subject. A subject is capped at
 72 characters.
@@ -177,6 +181,10 @@ and names the source of the list it used).
 | 0 | `Spec:` | a `Spec: none (<reason>)` trailer |
 | 1 | `Why:`, `Rule:`, `Verified:`, `Spec:` | Why/Rule/Verified in the message, which is the spec |
 | 2 | `Why:`, `Rule:`, `Verified:`, `Spec:` | a spec file, named in a `Spec:` trailer |
+
+**Tier 0** is a change touching only these, the class whose mistakes announce themselves the
+next time somebody runs the thing: `app/prompts/*`, `docs/*`, `*.md`, `LICENSE`, `.gitignore.example`. **Tier 2** is anything matching the list below.
+**Tier 1** is everything else.
 
 **Slots.** Content is judged by presence of facts, never length or wording: a slot must carry
 at least 3 words and must not repeat the subject. A subject is capped at

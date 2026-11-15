@@ -702,6 +702,7 @@ def rules_markdown() -> str:
         f"| {level} | {', '.join(f'`{s}:`' for s in REQUIRED_SLOTS[level])} | {NEEDS[level]} |"
         for level in (0, 1, 2)
     )
+    tier0 = ", ".join(f"`{g}`" for g in TIER0_GLOBS)
     slots = "\n".join(f"| `{slot}:` | {SLOT_MEANING[slot]} |" for slot in SLOTS)
     defaults = ", ".join(f"`{g}`" for g in DEFAULT_TIER2)
     return f"""\
@@ -715,6 +716,10 @@ and names the source of the list it used).
 | Tier | Slots required | Needs |
 |---|---|---|
 {tiers}
+
+**Tier 0** is a change touching only these, the class whose mistakes announce themselves the
+next time somebody runs the thing: {tier0}. **Tier 2** is anything matching the list below.
+**Tier 1** is everything else.
 
 **Slots.** Content is judged by presence of facts, never length or wording: a slot must carry
 at least {MIN_SLOT_WORDS} words and must not repeat the subject. A subject is capped at

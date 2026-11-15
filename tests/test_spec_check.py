@@ -620,6 +620,14 @@ class TestGeneratedDocs:
         assert str(sc.MAX_SUBJECT) in block
         for glob in sc.DEFAULT_TIER2:
             assert f"`{glob}`" in block
+        # **And the tier-0 list, which the first version left out.** Replacing a consumer's
+        # hand-written tier table with this block then DELETED the only statement of which
+        # paths are tier 0, because the generator emitted half the tier model and the
+        # replacement was trusted to be complete. Found by the reviewer, in the file that
+        # lost the information.
+        for glob in sc.TIER0_GLOBS:
+            assert f"`{glob}`" in block, f"tier-0 glob {glob} missing from the block"
+        assert "Tier 1" in block, "the block never says what tier 1 is"
 
     def test_check_is_the_default_and_the_explicit_flag_works(self, tmp_path):
         """Both forms, because every document about this tool used the flag form.
