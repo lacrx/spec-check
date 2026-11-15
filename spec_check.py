@@ -871,6 +871,8 @@ def cmd_rules(args: argparse.Namespace) -> int:
 
 def cmd_docs(args: argparse.Namespace) -> int:
     """`--check` is the gate; `--write` is how an agent fixes what it reports."""
+    if args.check and args.write:
+        raise ToolError("--check and --write ask for opposite things")
     rc = 0
     for name in args.files:
         path = Path(name)
@@ -1049,6 +1051,12 @@ def main(argv: list[str] | None = None) -> int:
 
     p_docs = sub.add_parser("docs", help="check or rewrite generated blocks in documentation")
     p_docs.add_argument("files", nargs="+")
+    # **`--check` is accepted explicitly, and that is not sugar.** Checking is the default,
+    # so the first version had no such flag while the README, the action and this
+    # repository's own CI all called `docs --check <file>`: three documents describing a flag
+    # the code did not have, caught by that CI on the first run. The failure mode of the
+    # feature being built, inside the feature being built. Callers say what they mean.
+    p_docs.add_argument("--check", action="store_true", help="verify the blocks (the default)")
     p_docs.add_argument("--write", action="store_true", help="rewrite the blocks in place")
     p_docs.add_argument("--claims", action="store_true", help="print the claim tags instead")
     p_docs.set_defaults(func=cmd_docs)

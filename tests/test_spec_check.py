@@ -576,6 +576,27 @@ class TestGeneratedDocs:
         for glob in sc.DEFAULT_TIER2:
             assert f"`{glob}`" in block
 
+    def test_check_is_the_default_and_the_explicit_flag_works(self, tmp_path):
+        """Both forms, because every document about this tool used the flag form.
+
+        `--check` did not exist when the README, the action and this repository's CI were all
+        written to call it: documentation describing a flag the code did not have, which is
+        the failure this whole feature is against, inside this feature. Its own CI caught it
+        on the first run with `error: unrecognized arguments: --check`.
+        """
+        path = tmp_path / "CLAUDE.md"
+        path.write_text(self.doc())
+        assert sc.main(["docs", str(path)]) == 0
+        assert sc.main(["docs", str(path), "--check"]) == 0
+        path.write_text(self.doc().replace("the UNION of two sources", "whichever answers"))
+        assert sc.main(["docs", str(path)]) == 1
+        assert sc.main(["docs", str(path), "--check"]) == 1
+
+    def test_check_and_write_together_is_a_tool_error(self, tmp_path):
+        path = tmp_path / "CLAUDE.md"
+        path.write_text(self.doc())
+        assert sc.main(["docs", str(path), "--check", "--write"]) == 2
+
     def test_the_block_carries_no_version_or_sha(self):
         """A block embedding the tool's own sha would go stale on every commit here, and a
         check that fires when nothing is wrong is one everybody learns to re-run blindly."""

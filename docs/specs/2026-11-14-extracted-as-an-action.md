@@ -82,7 +82,8 @@ would have needed a copy, and N copies of a rule is the failure this tool exists
 | S6 | `.github/workflows/ci.yml` runs `spec_check.py spec examples/SPEC-TEMPLATE.md` on every push. |
 | S7 | `TestGeneratedDocs::test_a_block_goes_stale_when_the_rules_change` monkeypatches `REQUIRED_SLOTS` and asserts the block goes red, which is the inversion that matters; `test_the_block_names_every_slot_and_tier` and `test_the_block_carries_no_version_or_sha` cover what it must and must not contain. This repository's own README carries a block and its CI checks it. |
 | S8 | `TestGeneratedDocs::test_a_file_with_no_block_fails_rather_than_passing`, `test_an_unclosed_block_is_a_failure_not_a_silent_pass`, `test_retired_phrasing_coming_back_fails`, `test_a_retired_directive_alone_is_not_a_failure`. |
-| The suite | `python3 -m pytest tests/ -q`: 81 passed. `python3 spec_check.py --selftest`: 24/24. CI runs both on 3.9 and 3.13, the 3.9 leg on `ubuntu-22.04` because `setup-python` has no 3.9 build for Ubuntu 26.04. `manual:` the selftest and the template check also run green on macOS's own `/usr/bin/python3`, 3.9.6, which is what a `commit-msg` hook there would use. |
+| The flag its own documents described | `TestGeneratedDocs::test_check_is_the_default_and_the_explicit_flag_works`. `docs --check` was in the README, the action and this repository's CI before it was in `argparse`; CI failed with `error: unrecognized arguments: --check` on the first run. Both forms work now, and `--check --write` together is a tool error rather than a guess. |
+| The suite | `python3 -m pytest tests/ -q`: 83 passed. `python3 spec_check.py --selftest`: 24/24. CI runs both on 3.9 and 3.13, the 3.9 leg on `ubuntu-22.04` because `setup-python` has no 3.9 build for Ubuntu 26.04. `manual:` the selftest and the template check also run green on macOS's own `/usr/bin/python3`, 3.9.6, which is what a `commit-msg` hook there would use. |
 
 ## Rejected
 
