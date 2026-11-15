@@ -73,7 +73,7 @@ would have needed a copy, and N copies of a rule is the failure this tool exists
 | S4 | `TestTheToolItself::test_a_spec_outside_the_repository_needs_the_prefix_configured`, both directions. |
 | S5 | `manual:` every consumer workflow was written with a sha, and the README says why. Nothing enforces it mechanically, which is stated rather than implied. |
 | S6 | `.github/workflows/ci.yml` runs `spec_check.py spec examples/SPEC-TEMPLATE.md` on every push. |
-| The suite | `python3 -m pytest tests/ -q`: 68 passed. `python3 spec_check.py --selftest`: 24/24. CI runs both on 3.9 and 3.13. |
+| The suite | `python3 -m pytest tests/ -q`: 68 passed. `python3 spec_check.py --selftest`: 24/24. CI runs both on 3.9 and 3.13, the 3.9 leg on `ubuntu-22.04` because `setup-python` has no 3.9 build for Ubuntu 26.04. `manual:` the selftest and the template check also run green on macOS's own `/usr/bin/python3`, 3.9.6, which is what a `commit-msg` hook there would use. |
 
 ## Rejected
 

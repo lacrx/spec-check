@@ -8,12 +8,19 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # The floor and the current release. The floor is real: this is vendored into
-        # repositories and run by a git hook on whatever python the machine has.
-        python: ["3.9", "3.13"]
+        # The floor and the current release. **The floor is real**: a `commit-msg` hook runs
+        # this on whatever python the machine has, and macOS still ships 3.9.6 as
+        # `/usr/bin/python3`, so breaking 3.9 breaks the hook on a laptop rather than in CI.
+        #
+        # 3.9 is pinned to ubuntu-22.04 because `setup-python` has no 3.9 build for Ubuntu
+        # 26.04, which is what `ubuntu-latest` now is: the first run of this workflow failed
+        # with "The version '3.9' with architecture 'x64' was not found for Ubuntu 26.04".
+        include:
+          - {os: ubuntu-22.04, python: "3.9"}
+          - {os: ubuntu-latest, python: "3.13"}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
