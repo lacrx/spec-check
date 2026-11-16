@@ -159,6 +159,78 @@ SKIP_RE = re.compile(
 MAX_SUBJECT = 72
 MIN_SLOT_WORDS = 3
 
+# A relative time REFERENCE: a phrase that names a moment only in relation to when it was
+# typed. Six months on, "fixed what we broke last week" names nothing a reader can place.
+#
+# WHY THIS IS A CHECK AND NOT ADVICE
+#
+# The rule it enforces already existed as prose: a house style list of things that are "never
+# compressed, because these are the lines a reader cannot reconstruct" -- exact error text,
+# numbers with their units, dates, `file:line`, the reasoning behind a guard, anything about
+# money, and what was NOT verified. Of those seven, six need a human to judge; nothing can
+# know whether an error message was quoted faithfully or at all. **A relative reference with
+# no absolute date anywhere in the message is the one that is mechanically decidable**, so it
+# is the one that gets a mechanism. The other six stay advice, and saying which is which is
+# more honest than a check that pretends to cover the list.
+#
+# A POSSESSIVE IS A NOUN, NOT A TIMESTAMP
+#
+# `yesterday's` is excluded, found by running this over twenty real commits: one described a
+# scheduler that served "today's task as yesterday's", which is domain prose about dates and
+# not a reference to when anything happened. One false positive in twenty is already enough to
+# matter, because the rule this enforces says in the same breath that a gate firing when
+# nothing is wrong is one everybody learns to bypass. The cost: "yesterday's build broke" is
+# now missed. That phrasing is rarer than the possessive-as-noun, and precision is worth more
+# than recall for a check that blocks a merge.
+#
+# DURATIONS ARE DELIBERATELY NOT MATCHED
+#
+# "held for 10 minutes", "a 2-minute tick", "worked for three days" are spans, not positions,
+# and a span needs no anchor to be meaningful. Flagging them would fire on the TTLs and
+# intervals these messages are full of, and a gate that fires when nothing is wrong is one
+# everybody learns to bypass. The cost of that choice, stated plainly: an unanchored span
+# ("it was broken for three days") still passes, and placing it remains the author's job.
+RELATIVE_TIME = re.compile(
+    r"""\b(?:
+          (?:a\s+few\s+|a\s+couple\s+of\s+|\d+\s+|one\s+|two\s+|three\s+)
+              (?:second|minute|hour|day|week|month|year)s?\s+ago
+        | (?:yesterday|tomorrow|tonight)(?!\s*'s)
+        | last\s+(?:night|week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)
+        | next\s+(?:week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)
+        | this\s+(?:morning|afternoon|evening)
+        | earlier\s+(?:today|this\s+week)
+        | the\s+other\s+day
+      )\b""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# What counts as an anchor: an ISO date, or a month name carrying a four-digit year. A bare
+# year is not enough -- "we changed this in 2026" does not place a day.
+ABSOLUTE_DATE = re.compile(
+    r"""\b(?: \d{4}-\d{2}-\d{2}
+        | (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}
+        | \d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}
+      )\b""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def unanchored_time_references(text: str) -> list[str]:
+    """Relative time references in `text`, or [] if an absolute date anchors the message.
+
+    One absolute date anywhere is enough. A message that says "broke on 2026-11-13 and was
+    found three days later" is perfectly placeable; demanding a date beside every phrase would
+    be noise.
+    """
+    if ABSOLUTE_DATE.search(text):
+        return []
+    seen: list[str] = []
+    for m in RELATIVE_TIME.finditer(text):
+        hit = " ".join(m.group(0).split()).lower()
+        if hit not in seen:
+            seen.append(hit)
+    return seen
+
 
 class ToolError(Exception):
     """The check could not be run. Exit 2, never 1: this is not a verdict."""
@@ -513,6 +585,18 @@ def check_message(
         elif value.strip().lower() == msg.subject.lower():
             fails.append(f"`{slot}:` repeats the subject, which the diff already says")
 
+    # Subject plus every slot value, not the raw file: `parse_message` has already dropped
+    # git comment lines and the scissors section, which are template rather than message.
+    stale = unanchored_time_references(
+        " ".join([msg.subject, *msg.slots.values()])
+    )
+    if stale:
+        fails.append(
+            "relative date with nothing to anchor it: "
+            + ", ".join(f"{h!r}" for h in stale)
+            + ". Name the date once (2026-11-13) and these read the same in a year"
+        )
+
     verified = msg.slots.get("Verified", "").strip()
     if verified.lower().startswith("not run"):
         if not re.match(r"^not run\s*\(.+\)", verified, re.IGNORECASE):
@@ -764,6 +848,11 @@ at least {MIN_SLOT_WORDS} words and must not repeat the subject. A subject is ca
 
 `Verified: not run (<reason>)` is accepted, is never reported as verified, and cannot pass a
 tier-2 change.
+
+**A relative date needs an anchor.** A message saying `yesterday`, `last week` or `three days
+ago` with no absolute date anywhere names a moment only in relation to when it was typed, and
+fails. One date in the message is enough to satisfy it. Durations (`for three days`, `a
+2-minute tick`) are spans rather than positions and are never flagged.
 
 **The tier-2 list is the UNION of two sources**, never a precedence order: `{TIER2_FILE}` in
 the repository root, and the `paths:` block of a review workflow (default `{WORKFLOW}`). The
