@@ -458,6 +458,73 @@ class TestTheGeneratorsConstantsStayInStep:
             assert "Spec" in slots, level
 
 
+class TestRelativeDatesNeedAnAnchor:
+    """The one mechanically decidable item on the never-compress list.
+
+    The house rule says exact error text, numbers with units, dates, `file:line`, the
+    reasoning behind a guard, money, and what was NOT verified are never compressed. Six of
+    those seven need a human. A relative reference with no absolute date anywhere does not,
+    so it is the one that gets enforced; the rest stay advice.
+    """
+
+    def test_a_relative_reference_with_no_date_is_caught(self):
+        for phrase in ["yesterday", "last week", "three days ago", "2 hours ago",
+                       "a few days ago", "the other day", "this morning", "tonight",
+                       "earlier today", "last tuesday", "a couple of weeks ago"]:
+            assert sc.unanchored_time_references(f"broke {phrase} and nobody saw"), phrase
+
+    def test_one_absolute_date_anywhere_anchors_the_whole_message(self):
+        assert sc.unanchored_time_references("broke on 2026-11-13, found three days ago") == []
+        assert sc.unanchored_time_references("broke Nov 13, 2026; found yesterday") == []
+        assert sc.unanchored_time_references("broke 13 November 2026; found yesterday") == []
+
+    def test_a_bare_year_is_not_an_anchor(self):
+        """"we changed this in 2026" does not place a day."""
+        assert sc.unanchored_time_references("changed in 2026, broke last week")
+
+    def test_durations_are_never_flagged(self):
+        """A span needs no anchor. These are what real messages here are full of, and
+        flagging them is how a gate becomes noise."""
+        for phrase in ["held for 10 minutes", "a 2-minute tick", "worked for three days",
+                       "after 225s", "a 300 second TTL", "every 15 minutes",
+                       "thirty retained archives", "4 pull requests behind"]:
+            assert sc.unanchored_time_references(f"the lock is {phrase}") == [], phrase
+
+    def test_a_possessive_is_a_noun_not_a_timestamp(self):
+        """Found by running this over twenty real commits: one described a scheduler serving
+        "today's task as yesterday's", which is prose about dates and not a reference to when
+        anything happened. One false positive in twenty matters for a check that blocks a
+        merge."""
+        assert sc.unanchored_time_references("served today's task as yesterday's") == []
+        assert sc.unanchored_time_references("it broke yesterday") == ["yesterday"]
+
+    def test_it_reports_each_phrase_once(self):
+        got = sc.unanchored_time_references("broke yesterday, still broken yesterday")
+        assert got == ["yesterday"]
+
+    def test_a_message_fails_on_it_and_names_the_phrase(self):
+        msg = (
+            "fix(x): stop the thing breaking\n\n"
+            "Why: it broke last week and nothing caught it, seen in the log\n"
+            "Rule: the guard now refuses an empty value outright\n"
+            "Verified: pytest tests/ -q exits 0, 12 passed\n"
+            "Spec: none (one line, covered by its own test)\n"
+        )
+        got = fails(msg)
+        assert any("relative date" in f and "last week" in f for f in got), got
+
+    def test_the_same_message_passes_once_the_date_is_named(self):
+        msg = (
+            "fix(x): stop the thing breaking\n\n"
+            "Why: it broke on 2026-11-13 and nothing caught it, seen in the log\n"
+            "Rule: the guard now refuses an empty value outright\n"
+            "Verified: pytest tests/ -q exits 0, 12 passed\n"
+            "Spec: none (one line, covered by its own test)\n"
+        )
+        got = fails(msg)
+        assert not any("relative date" in f for f in got), got
+
+
 class TestTheToolItself:
     def test_a_missing_spec_reference_fails_rather_than_crashing(self):
         body = GOOD.replace("Spec: in-message", "Spec: docs/specs/not-a-file.md")
